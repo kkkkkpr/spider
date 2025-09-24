@@ -3,6 +3,7 @@
 
 import requests
 from hashlib import md5
+import json
 
 class Chaojiying_Client(object):
 
@@ -60,7 +61,12 @@ class Chaojiying_Client(object):
 
 
 if __name__ == '__main__':
-    chaojiying = Chaojiying_Client('jaywn0809', 'j9wngu73', '973116')	#用户中心>>软件ID 生成一个替换 96001
+    with open('config.json', 'r') as f:
+        config = json.load(f)
+    username = config['username']
+    password = config['password']
+    soft_id = config['soft_id']
+    chaojiying = Chaojiying_Client(username, password, soft_id)	#用户中心>>软件ID 生成一个替换 96001
     im = open('a.jpg', 'rb').read()													#本地图片文件路径 来替换 a.jpg 有时WIN系统须要//
     print( chaojiying.PostPic(im, 4004)	)										#1902 验证码类型  官方网站>>价格体系 3.4+版 print 后要加()
     #print chaojiying.PostPic(base64_str, 1902)  #此处为传入 base64代码
