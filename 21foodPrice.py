@@ -34,14 +34,14 @@ def create_session() -> requests.Session:
     session.headers.update(
         {
             "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                "AppleWebKit/537.36 (KHTML, like Gecko)"
+                "Chrome/140.0.0.0 Safari/537.36"
             ),
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
             "Accept-Language": "zh-CN,zh;q=0.9",
-            "Connection": "keep-alive",
-            "Referer": "https://price.21food.cn/",
+            "cookie": "JSESSIONID=aaaQR8ydPcmlxd3RfzVLz; Hm_lvt_130a926bf7ac0d05a0769ad61f7730b2=1758544294; HMACCOUNT=865E5BDB61CE30FE; __51vcke__3GzAxR3EGfmHrtLx=1130421f-22a6-543b-8044-19b679f0fe32; __51vuft__3GzAxR3EGfmHrtLx=1758544293565; clientkey=1758544300570_8247; searchkey=%u725B%u767E%u53F6; _ga=GA1.2.1832288571.1758544294; _gid=GA1.2.1319798846.1758800669; __51uvsct__3GzAxR3EGfmHrtLx=4; _clientkey_=58.246.206.98; _gat=1; visittimes=42; Hm_lpvt_130a926bf7ac0d05a0769ad61f7730b2=1758800735; __vtins__3GzAxR3EGfmHrtLx=%7B%22sid%22%3A%20%229e3ff344-70ea-5dbf-850c-514d28aec978%22%2C%20%22vd%22%3A%204%2C%20%22stt%22%3A%2066124%2C%20%22dr%22%3A%203387%2C%20%22expires%22%3A%201758802535379%2C%20%22ct%22%3A%201758800735379%7D; _ga_G8T1QC9BGW=GS2.2.s1758800669$o4$g1$t1758800735$j57$l0$h0; code=f; view=1391",
+            "Referer": "https://price.21food.cn/guoshu-p1.html",
         }
     )
     return session
@@ -72,77 +72,15 @@ def extract_rows(html_text: str) -> List[Tuple[str, str, str, str]]:
     results: List[Tuple[str, str, str, str]] = []
 
     # 优先选择包含目标表头关键字的 table
-    candidate_tables = doc.xpath(
-        """
-        //table[
-          .//th[contains(normalize-space(.), '产品') or contains(normalize-space(.), '品名')]
-          and .//th[contains(normalize-space(.), '规格')]
-          and (
-            .//th[
-              contains(normalize-space(.), '平均')
-              or contains(normalize-space(.), '均价')
-              or contains(normalize-space(.), '价格')
-            ]
-          )
-        ]
-        """
-    )
+    candidate_tables = doc.xpath("//div[@class='sjs_top_cent_erv'][1]//li")
 
-    # 如未命中，则回退到所有表格
-    if not candidate_tables:
-        candidate_tables = doc.xpath("//table")
-
-    for table in candidate_tables:
-        # 提取表头，用于列索引映射（若存在）
-        header_cells = table.xpath(".//tr[.//th][1]//th")
-        name_idx = spec_idx = avg_idx = date_idx = None
-        if header_cells:
-            header_texts = [_text(th) for th in header_cells]
-            for i, ht in enumerate(header_texts):
-                if name_idx is None and ("产品" in ht or "品名" in ht or "名称" in ht):
-                    name_idx = i
-                if spec_idx is None and ("规格" in ht or "等级" in ht):
-                    spec_idx = i
-                if avg_idx is None and ("平均" in ht or "均价" in ht or "价格" in ht):
-                    avg_idx = i
-                if date_idx is None and ("日期" in ht or re.search(r"[\u65e5\u671f]", ht)):
-                    date_idx = i
-
-        # 遍历数据行（排除含 th 的行）
-        data_rows = table.xpath(".//tr[not(.//th) and count(.//td) >= 4]")
-        for tr in data_rows:
-            tds = tr.xpath("./td")
-            if len(tds) < 4:
-                continue
-
-            # 若无法从表头确定索引，则默认按常规顺序取前四列
-            i_name = name_idx if name_idx is not None and name_idx < len(tds) else 0
-            i_spec = spec_idx if spec_idx is not None and spec_idx < len(tds) else 1
-            i_avg = avg_idx if avg_idx is not None and avg_idx < len(tds) else 2
-            i_date = date_idx if date_idx is not None and date_idx < len(tds) else 3
-
-            product_name = _text(tds[i_name])
-            specification = _text(tds[i_spec])
-            average_price = _text(tds[i_avg])
-            date_value = _text(tds[i_date])
-
-            # 基本校验
-            if not product_name:
-                continue
-            if not re.search(r"\d", average_price):
-                continue
-            if not re.search(r"[-./]", date_value):
-                # 尝试后移一列
-                if i_date + 1 < len(tds):
-                    candidate_date = _text(tds[i_date + 1])
-                    if re.search(r"[-./]", candidate_date):
-                        date_value = candidate_date
-                    else:
-                        continue
-                else:
-                    continue
-
-            results.append((product_name, specification, average_price, date_value))
+    for li in candidate_tables:
+        tds = li.xpath(".//tr/td")
+        product_name = tds[0].xpath(".//a/text()")[0].strip()
+        spec = tds[1].xpath("string(.)").strip()
+        price = tds[2].xpath("string(.)").strip()
+        date = tds[3].xpath("string(.)").strip()
+        results.append((product_name, spec, average_price, date_value))
 
     return results
 
@@ -151,46 +89,6 @@ def iter_pages(start: int, end: int) -> Iterable[int]:
     step = 1 if end >= start else -1
     for p in range(start, end + step, step):
         yield p
-
-
-def main() -> None:
-    session = create_session()
-    print("产品名称\t规格\t平均价格\t日期")
-    for page in iter_pages(FIRST_PAGE, LAST_PAGE):
-        try:
-            html_text = fetch_html(session, page)
-        except Exception as exc:
-            print(f"[WARN] 第{page}页请求失败: {exc}", file=sys.stderr)
-            continue
-
-        # 处理可能的人机校验/验证码
-        try:
-            maybe_handle_captcha(session, html_text, referer=URL_TEMPLATE.format(page=page))
-        except Exception as exc:
-            print(f"[WARN] 第{page}页验证码处理失败: {exc}", file=sys.stderr)
-
-        rows = extract_rows(html_text)
-        if not rows:
-            # 有些页面首屏为“页面加载中”，短暂等待后重试一次
-            if "页面加载中" in html_text:
-                time.sleep(0.8)
-                try:
-                    html_text = fetch_html(session, page)
-                    # 重试前再次尝试处理验证码
-                    try:
-                        maybe_handle_captcha(session, html_text, referer=URL_TEMPLATE.format(page=page))
-                    except Exception:
-                        pass
-                    rows = extract_rows(html_text)
-                except Exception as exc:
-                    print(f"[WARN] 第{page}页重试失败: {exc}", file=sys.stderr)
-
-        if not rows:
-            print(f"[WARN] 第{page}页未解析到数据", file=sys.stderr)
-            continue
-
-        for product_name, specification, average_price, date_value in rows:
-            print(f"{product_name}\t{specification}\t{average_price}\t{date_value}")
 
 
 def maybe_handle_captcha(session: requests.Session, html_text: str, referer: str) -> None:
@@ -288,6 +186,46 @@ def _download_and_solve_captcha(session: requests.Session, img_src: str, referer
     except Exception:
         print({"captcha_image": os.path.basename(img_path), "result": result})
 
+
+
+def main() -> None:
+    session = create_session()
+    print("产品名称\t规格\t平均价格\t日期")
+    for page in iter_pages(FIRST_PAGE, LAST_PAGE):
+        try:
+            html_text = fetch_html(session, page)
+        except Exception as exc:
+            print(f"[WARN] 第{page}页请求失败: {exc}", file=sys.stderr)
+            continue
+
+        # 处理可能的人机校验/验证码
+        try:
+            maybe_handle_captcha(session, html_text, referer=URL_TEMPLATE.format(page=page))
+        except Exception as exc:
+            print(f"[WARN] 第{page}页验证码处理失败: {exc}", file=sys.stderr)
+
+        rows = extract_rows(html_text)
+        if not rows:
+            # 有些页面首屏为“页面加载中”，短暂等待后重试一次
+            if "页面加载中" in html_text:
+                time.sleep(0.8)
+                try:
+                    html_text = fetch_html(session, page)
+                    # 重试前再次尝试处理验证码
+                    try:
+                        maybe_handle_captcha(session, html_text, referer=URL_TEMPLATE.format(page=page))
+                    except Exception:
+                        pass
+                    rows = extract_rows(html_text)
+                except Exception as exc:
+                    print(f"[WARN] 第{page}页重试失败: {exc}", file=sys.stderr)
+
+        if not rows:
+            print(f"[WARN] 第{page}页未解析到数据", file=sys.stderr)
+            continue
+
+        for product_name, specification, average_price, date_value in rows:
+            print(f"{product_name}\t{specification}\t{average_price}\t{date_value}")
 
 if __name__ == "__main__":
     main()
